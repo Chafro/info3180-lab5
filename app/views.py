@@ -4,13 +4,12 @@ Jinja2 Documentation:    http://jinja.pocoo.org/2/documentation/
 Werkzeug Documentation:  http://werkzeug.pocoo.org/documentation/
 This file creates your application.
 """
-
 from app import app, db, login_manager
 from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, current_user, login_required
 from app.forms import LoginForm
 from app.models import UserProfile
-
+from werkzeug.security import check_password_hash
 
 ###
 # Routing for your application.
@@ -31,10 +30,15 @@ def about():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     form = LoginForm()
-    if request.method == "POST":
+    if request.method == "POST" and form.validate_on_submit():
         # change this to actually validate the entire form submission
         # and not just one field
-        if form.username.data:
+        username = form.username.data
+        password = form.password.data
+        user = UserProfile.query.filter_by(username=username,password=password).first() 
+
+        if user is not None and check_password_hash(user.password, password):
+            
             # Get the username and password values from the form.
 
             # using your model, query database for a user based on the username
@@ -44,10 +48,17 @@ def login():
             # passed to the login_user() method below.
 
             # get user id, load into session
-            login_user(user)
+            
 
             # remember to flash a message to the user
-            return redirect(url_for("home"))  # they should be redirected to a secure-page route instead
+            login_user(user)
+            flash('Logged in successfully.', 'success')
+            next = request.args.get('next')
+            if not is_safe_url(next):
+                return abort(400) 
+            return redirect(url_for("secure-page"))  # they should be redirected to a secure-page route instead
+        else:
+            flash('Username or Password is incorrect.', 'danger')
     return render_template("login.html", form=form)
 
 
@@ -56,6 +67,19 @@ def login():
 @login_manager.user_loader
 def load_user(id):
     return UserProfile.query.get(int(id))
+
+
+@app.route('/secure-page')
+@login_required
+def secure_page():
+    return render_template('secure_page.html')
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash('You have been logged out.', 'danger')
+    return redirect(url_for('home'))
 
 ###
 # The functions below should be applicable to all Flask apps.
@@ -67,6 +91,7 @@ def send_text_file(file_name):
     """Send your static text file."""
     file_dot_text = file_name + '.txt'
     return app.send_static_file(file_dot_text)
+
 
 
 @app.after_request
